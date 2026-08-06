@@ -1,5 +1,7 @@
 import React from 'react';
 import prisma from '@/lib/prisma';
+
+export const revalidate = 60; // Revalidar cada 60 segundos (ISR)
 import {
   BookOpen,
   Music,

@@ -3,6 +3,8 @@ import prisma from '@/lib/prisma';
 import { notFound } from 'next/navigation';
 import ProductDetailClient from '@/components/ProductDetailClient';
 
+export const revalidate = 60; // Revalidar cada 60 segundos (ISR)
+
 const FALLBACK_PRODUCTS = [
   {
     id: 'p1',
@@ -103,10 +105,28 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   };
 }
 
+export async function generateStaticParams() {
+  try {
+    const products = await prisma.producto.findMany({
+      where: { activo: true },
+      select: { slug: true }
+    });
+    return products.map((p) => ({
+      slug: p.slug
+    }));
+  } catch {
+    return FALLBACK_PRODUCTS.map((p) => ({
+      slug: p.slug
+    }));
+  }
+}
+
 export default async function ProductDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const product = await getProductBySlug(slug);
-  const whatsappNumber = await getWhatsappNumber();
+  const [product, whatsappNumber] = await Promise.all([
+    getProductBySlug(slug),
+    getWhatsappNumber()
+  ]);
 
   if (!product) {
     notFound();

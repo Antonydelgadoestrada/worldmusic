@@ -2,6 +2,8 @@ import React from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import prisma from '@/lib/prisma';
+
+export const revalidate = 60; // Revalidar cada 60 segundos
 import {
   Compass,
   Award,

@@ -5,6 +5,7 @@ import { ThemeProvider } from '@/components/ThemeProvider';
 import { CartProvider } from '@/context/CartContext';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import prisma from '@/lib/prisma';
 
 const outfit = Outfit({
   subsets: ['latin'],
@@ -18,30 +19,37 @@ export const metadata: Metadata = {
   keywords: 'instrumentos musicales, guitarras, teclados, baterias, ukeleles, academia de musica, clases de musica, lima, miraflores, peru',
 };
 
-export default function RootLayout({
+async function getFooterConfig() {
+  try {
+    const config = await prisma.configuracion.findUnique({
+      where: { id: 'default' },
+      select: {
+        address: true,
+        whatsappNumber: true,
+        facebookUrl: true,
+        instagramUrl: true,
+        tiktokUrl: true,
+        youtubeUrl: true,
+        policyContacto: true,
+        policyHorarios: true,
+      },
+    });
+    return config;
+  } catch (e) {
+    console.warn('Error cargando config en RootLayout:', e);
+    return null;
+  }
+}
+
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const footerConfig = await getFooterConfig();
+
   return (
     <html lang="es" className={`${outfit.variable} h-full antialiased`} style={{ scrollBehavior: 'smooth' }}>
-      <head>
-        {/* Script para prevenir parpadeo (flash) de tema antes de la hidratación */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              try {
-                const theme = localStorage.getItem('theme') || 'light';
-                if (theme === 'dark') {
-                  document.documentElement.classList.add('dark');
-                } else {
-                  document.documentElement.classList.remove('dark');
-                }
-              } catch (_) {}
-            `,
-          }}
-        />
-      </head>
       <body className="font-sans min-h-full flex flex-col bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-50 transition-colors">
         <ThemeProvider>
           <CartProvider>
@@ -49,7 +57,7 @@ export default function RootLayout({
             <main className="flex-grow pt-20">
               {children}
             </main>
-            <Footer />
+            <Footer config={footerConfig} />
           </CartProvider>
         </ThemeProvider>
       </body>

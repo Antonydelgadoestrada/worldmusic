@@ -2,6 +2,8 @@ import React from 'react';
 import prisma from '@/lib/prisma';
 import CatalogClient from '@/components/CatalogClient';
 
+export const revalidate = 60; // Revalidar la página en segundo plano cada 60 segundos (ISR)
+
 // Fallbacks de datos en caso de que la base de datos no esté conectada
 const FALLBACK_CATEGORIES = [
   { id: '1', nombre: 'Guitarras', slug: 'guitarras' },
@@ -70,20 +72,20 @@ const FALLBACK_PRODUCTS = [
 
 async function getCatalogData() {
   try {
-    const categories = await prisma.categoria.findMany({
-      orderBy: { nombre: 'asc' },
-    });
-    const products = await prisma.producto.findMany({
-      where: { activo: true },
-      include: { categoria: true },
-      orderBy: { createdAt: 'desc' },
-    });
-    
-    // Obtener número de whatsapp configurado
-    const config = await prisma.configuracion.findUnique({
-      where: { id: 'default' },
-      select: { whatsappNumber: true },
-    });
+    const [categories, products, config] = await Promise.all([
+      prisma.categoria.findMany({
+        orderBy: { nombre: 'asc' },
+      }),
+      prisma.producto.findMany({
+        where: { activo: true },
+        include: { categoria: true },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.configuracion.findUnique({
+        where: { id: 'default' },
+        select: { whatsappNumber: true },
+      })
+    ]);
 
     return {
       categories: categories.length ? categories : FALLBACK_CATEGORIES,
