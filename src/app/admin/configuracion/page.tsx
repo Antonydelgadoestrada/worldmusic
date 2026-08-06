@@ -2,6 +2,8 @@ import React from 'react';
 import prisma from '@/lib/prisma';
 import ConfiguracionForm from '@/components/ConfiguracionForm';
 
+export const dynamic = 'force-dynamic';
+
 const DEFAULT_CONFIG = {
   whatsappNumber: '51989947606',
   whatsappMessage: 'Hola. Deseo cotizar los siguientes productos:',

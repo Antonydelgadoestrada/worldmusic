@@ -3,6 +3,8 @@ import prisma from '@/lib/prisma';
 import Link from 'next/link';
 import { Package, FolderTree, ToggleLeft, ToggleRight, ArrowRight, ShieldCheck } from 'lucide-react';
 
+export const dynamic = 'force-dynamic';
+
 async function getStats() {
   try {
     const totalProducts = await prisma.producto.count();

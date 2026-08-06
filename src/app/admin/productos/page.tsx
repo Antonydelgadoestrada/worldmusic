@@ -2,6 +2,8 @@ import React from 'react';
 import prisma from '@/lib/prisma';
 import ProductosClient from '@/components/ProductosClient';
 
+export const dynamic = 'force-dynamic';
+
 async function getProductsData() {
   try {
     const products = await prisma.producto.findMany({
