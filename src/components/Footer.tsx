@@ -143,7 +143,7 @@ export default function Footer({ config }: FooterProps) {
                 </Link>
               </li>
               <li>
-                <Link href="/#politicas" className="text-sm text-neutral-500 dark:text-neutral-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">
+                <Link href="/terminos-y-condiciones" className="text-sm text-neutral-500 dark:text-neutral-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">
                   Términos y Condiciones
                 </Link>
               </li>
