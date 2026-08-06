@@ -1,15 +1,49 @@
 import { PrismaClient } from '@prisma/client';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 
 const prisma = new PrismaClient();
 
 function hashPassword(password: string): string {
-  // Usar PBKDF2 nativo para hashing seguro y 100% portable
   return crypto.pbkdf2Sync(password, 'world-music-salt-key', 10000, 64, 'sha512').toString('hex');
 }
 
+function slugify(text: string): string {
+  return text
+    .toString()
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '-') 
+    .replace(/[^\w\-]+/g, '') 
+    .replace(/\-\-+/g, '-') 
+    .replace(/^-+/, '') 
+    .replace(/-+$/, '');
+}
+
+function detectCategorySlug(title: string): string {
+  const t = title.toLowerCase();
+  if (t.includes('guitarra')) return 'guitarras';
+  if (t.includes('bajo')) return 'bajos';
+  if (t.includes('ukelele')) return 'ukeleles';
+  if (t.includes('cuerda') || t.includes('naylon') || t.includes('nylon') || t.includes('1ra') || t.includes('2da') || t.includes('3ra') || t.includes('4ta') || t.includes('5ta') || t.includes('6ta') || t.includes('metal') || t.includes('cuerdas') || t.includes('orphee') || t.includes('alice') || t.includes('d\'addario') || t.includes('romeo')) return 'cuerdas';
+  if (t.includes('afinador')) return 'afinadores';
+  if (t.includes('funda') || t.includes('estuche') || t.includes('mochila') || t.includes('capo') || t.includes('capodastro')) return 'fundas';
+  if (t.includes('pedal') || t.includes('efecto')) return 'pedales';
+  if (t.includes('cable') || t.includes('plug') || t.includes('adaptador') || t.includes('canon') || t.includes('conector') || t.includes('jack')) return 'cables';
+  if (t.includes('atril') || t.includes('soporte') || t.includes('pedestal')) return 'atriles';
+  if (t.includes('parlante') || t.includes('ampli') || t.includes('combo') || t.includes('bocina') || t.includes('speaker')) return 'parlantes';
+  if (t.includes('microfono') || t.includes('mic')) return 'microfonos';
+  if (t.includes('violin') || t.includes('violín') || t.includes('arco') || t.includes('brea') || t.includes('cremona')) return 'violines';
+  if (t.includes('teclado') || t.includes('piano') || t.includes('organeta')) return 'teclados';
+  if (t.includes('bateria') || t.includes('batería') || t.includes('tambor') || t.includes('platillo') || t.includes('baqueta') || t.includes('tarola')) return 'baterias';
+  if (t.includes('viento') || t.includes('flauta') || t.includes('saxo') || t.includes('trompeta') || t.includes('armonica') || t.includes('boquilla') || t.includes('quena') || t.includes('zampoña')) return 'viento';
+  if (t.includes('parche') || t.includes('pandereta') || t.includes('cajon') || t.includes('cajón') || t.includes('conga') || t.includes('bongo') || t.includes('bongó') || t.includes('shaker') || t.includes('maraca') || t.includes('campana') || t.includes('guiro') || t.includes('güiro') || t.includes('cencerro')) return 'percusion';
+  return 'otros';
+}
+
 async function main() {
-  console.log('Iniciando proceso de siembra (seed)...');
+  console.log('Iniciando proceso de siembra (seed) desde catalogo_agente.md...');
 
   // 1. Crear Administrador por defecto
   const adminEmail = 'admin@worldmusic.com';
@@ -49,7 +83,7 @@ async function main() {
     { nombre: 'Otros', slug: 'otros' },
   ];
 
-  const categoriasMap: { [key: string]: string } = {};
+  const categoriasMap: { [slug: string]: string } = {};
 
   for (const cat of categoriasData) {
     const createdCat = await prisma.categoria.upsert({
@@ -62,7 +96,7 @@ async function main() {
   console.log('Categorías creadas o actualizadas con éxito.');
 
   // 3. Crear Configuración por defecto
-  const config = await prisma.configuracion.upsert({
+  await prisma.configuracion.upsert({
     where: { id: 'default' },
     update: {},
     create: {
@@ -75,7 +109,7 @@ async function main() {
       instagramUrl: 'https://instagram.com/worldmusicpe',
       tiktokUrl: 'https://tiktok.com/@worldmusicpe',
       youtubeUrl: 'https://youtube.com/worldmusicpe',
-      aboutHistory: 'Fundada en 2010, World Music nació de la pasión por acercar la música a todas las personas. Comenzamos como un pequeño taller y nos hemos convertido en una de las tiendas de instrumentos de referencia en la ciudad, combinando la venta de marcas de prestigio con una academia de formación musical integral.',
+      aboutHistory: 'Fundada en 2010, World Music nació de la pasión por acercar la música a todas las personas. Comenzamos como un pequeño taller de luthería y nos hemos convertido en una de las tiendas de instrumentos de referencia en la ciudad, combinando la venta de marcas de prestigio con una academia de formación musical integral.',
       aboutMission: 'Proveer instrumentos musicales de la más alta calidad y ofrecer una formación musical excepcional, inspirando a la próxima generación de músicos en nuestro país.',
       aboutVision: 'Ser la cadena líder en tiendas de instrumentos y academia de música a nivel nacional, reconocida por la excelencia en el servicio al cliente y metodologías de aprendizaje innovadoras.',
       aboutValues: 'Pasión por la música, Excelencia, Compromiso con la educación, Confianza y Calidad.',
@@ -89,121 +123,101 @@ async function main() {
   });
   console.log('Configuración por defecto de la tienda guardada.');
 
-  // 4. Crear Productos de Muestra
-  const productosMuestra = [
-    {
-      titulo: 'Guitarra Acústica Yamaha F310',
-      descripcion: 'La guitarra acústica clásica ideal para principiantes y músicos intermedios. Excelente resonancia y afinación estable.',
-      precio: 650.0,
-      categoriaId: categoriasMap['guitarras'],
-      imagen: 'https://images.unsplash.com/photo-1510915361894-db8b60106cb1?w=500&auto=format&fit=crop&q=80',
-      incluye: 'Guitarra Yamaha F310, funda de lona acolchada, púa (plectro) y llave de ajuste del alma.',
-      slug: 'guitarra-acustica-yamaha-f310',
-      activo: true,
-      stock: 15,
-    },
-    {
-      titulo: 'Ukelele Concierto de Caoba',
-      descripcion: 'Ukelele tamaño concierto construido con madera de caoba seleccionada. Ofrece un tono cálido, dulce y con buen volumen.',
-      precio: 180.0,
-      categoriaId: categoriasMap['ukeleles'],
-      imagen: 'https://images.unsplash.com/photo-1508186227413-bb1f58a117af?w=500&auto=format&fit=crop&q=80',
-      incluye: 'Ukelele Concierto, funda de transporte con asas, afinador digital de clip y juego de cuerdas Aquila de repuesto.',
-      slug: 'ukelele-concierto-de-caoba',
-      activo: true,
-      stock: 25,
-    },
-    {
-      titulo: 'Bajo Eléctrico Fender Squier Affinity Jazz Bass',
-      descripcion: 'Un excelente punto de entrada en la familia Fender. Sonido clásico con comodidad moderna y dos pastillas de bobina simple.',
-      precio: 1250.0,
-      categoriaId: categoriasMap['bajos'],
-      imagen: 'https://images.unsplash.com/photo-1564186763535-ebb21ef5277f?w=500&auto=format&fit=crop&q=80',
-      incluye: 'Bajo Squier Jazz Bass, cable de audio plug-plug de 3 metros, llaves de ajuste para puente y mástil.',
-      slug: 'bajo-electrico-fender-squier-affinity-jazz-bass',
-      activo: true,
-      stock: 8,
-    },
-    {
-      titulo: 'Teclado Sensitivo Roland GO:KEYS 61',
-      descripcion: 'Teclado de 61 teclas sensitivas con más de 500 sonidos profesionales. Conectividad Bluetooth para tocar junto con tu smartphone.',
-      precio: 1580.0,
-      categoriaId: categoriasMap['teclados'],
-      imagen: 'https://images.unsplash.com/photo-1552422535-c45813c61732?w=500&auto=format&fit=crop&q=80',
-      incluye: 'Teclado Roland GO:KEYS, adaptador de corriente original, atril para partituras y manual de usuario en español.',
-      slug: 'teclado-sensitivo-roland-go-keys-61',
-      activo: true,
-      stock: 6,
-    },
-    {
-      titulo: 'Batería Acústica Pearl Roadshow 5 Cuerpos',
-      descripcion: 'Batería completa de excelente calidad acústica. Cascos de álamo de 9 capas que entregan potencia y gran definición tonal.',
-      precio: 2950.0,
-      categoriaId: categoriasMap['baterias'],
-      imagen: 'https://images.unsplash.com/photo-1524412513780-b462b2fe40f2?w=500&auto=format&fit=crop&q=80',
-      incluye: 'Bombo de 22", toms de 10" y 12", tom de piso de 16", tarola de 14". Incluye platillos hi-hat de 14", crash de 16", atriles reforzados, pedal de bombo, baquetas y asiento.',
-      slug: 'bateria-acustica-pearl-roadshow-5-cuerpos',
-      activo: true,
-      stock: 4,
-    },
-    {
-      titulo: 'Violín Acústico Cremona SV-75 4/4',
-      descripcion: 'Violín de tamaño completo ideal para estudiantes. Tapa de pino abeto y aros/fondo de arce para un sonido resonante y claro.',
-      precio: 480.0,
-      categoriaId: categoriasMap['violines'],
-      imagen: 'https://images.unsplash.com/photo-1612222869049-d8ec83637a3c?w=500&auto=format&fit=crop&q=80',
-      incluye: 'Violín SV-75, estuche rígido con interiores de felpa, arco de madera con crin natural y colofonia (pez/resina).',
-      slug: 'violin-acustico-cremona-sv-75-4-4',
-      activo: true,
-      stock: 10,
-    },
-    {
-      titulo: 'Afinador de Clip Joyo JT-01',
-      descripcion: 'Afinador cromático digital de alta precisión para sujetar en el clavijero. Pantalla LCD retroiluminada de dos colores.',
-      precio: 35.0,
-      categoriaId: categoriasMap['afinadores'],
-      imagen: 'https://images.unsplash.com/photo-1582200742183-4a159957d386?w=500&auto=format&fit=crop&q=80',
-      incluye: 'Afinador Joyo JT-01, pila CR2032 y manual de instrucciones.',
-      slug: 'afinador-de-clip-joyo-jt-01',
-      activo: true,
-      stock: 100,
-    },
-  ];
+  // 4. Leer y parsear catalogo_agente.md
+  console.log('Limpiando productos anteriores...');
+  await prisma.producto.deleteMany({});
 
-  for (const prod of productosMuestra) {
-    await prisma.producto.upsert({
-      where: { slug: prod.slug },
-      update: prod,
-      create: prod,
-    });
+  const filePath = path.join(process.cwd(), 'catalogo_agente.md');
+  if (!fs.existsSync(filePath)) {
+    console.error(`Error: No se encontró el archivo ${filePath}`);
+    process.exit(1);
   }
-  console.log('Productos de muestra sembrados con éxito.');
+
+  const content = fs.readFileSync(filePath, 'utf-8');
+  
+  // Dividir el archivo por "## " para obtener cada producto
+  const sections = content.split('## ').slice(1); // Ignorar el primer encabezado "# Catálogo de Productos"
+  
+  console.log(`Parseando ${sections.length} secciones de productos...`);
+  
+  const createdSlugs = new Set<string>();
+  let productsCount = 0;
+
+  for (const section of sections) {
+    const lines = section.split('\n');
+    const headerTitle = lines[0].trim();
+    if (!headerTitle) continue;
+
+    // Buscar el valor del campo producto y precio
+    let titulo = headerTitle;
+    let precio = 0;
+    
+    for (const line of lines) {
+      const cleanLine = line.trim();
+      if (cleanLine.startsWith('- **Producto:**')) {
+        titulo = cleanLine.replace('- **Producto:**', '').trim();
+      } else if (cleanLine.startsWith('- **Precio:**')) {
+        const rawPrice = cleanLine.replace('- **Precio:**', '').trim();
+        precio = parseFloat(rawPrice) || 0;
+      }
+    }
+
+    if (!titulo) continue;
+
+    // Detectar categoría automáticamente
+    const categorySlug = detectCategorySlug(titulo);
+    const categoriaId = categoriasMap[categorySlug] || categoriasMap['otros'];
+
+    // Generar un slug único
+    let slug = slugify(titulo);
+    let count = 1;
+    while (createdSlugs.has(slug)) {
+      slug = `${slugify(titulo)}-${count}`;
+      count++;
+    }
+    createdSlugs.add(slug);
+
+    // Crear el producto en la BD
+    await prisma.producto.create({
+      data: {
+        titulo,
+        precio,
+        descripcion: `Instrumento / Accesorio musical. Consulta detalles de stock e importación por WhatsApp.`,
+        incluye: 'Instrumento / Accesorio detallado según el título del catálogo.',
+        imagen: null, // Dejadas como no obligatorias para que las cargues tú
+        slug,
+        activo: true,
+        stock: 5,
+        categoriaId,
+      },
+    });
+
+    productsCount++;
+  }
+
+  console.log(`¡Siembra de base de datos exitosa! Se cargaron ${productsCount} productos.`);
 
   // 5. Configurar Row Level Security (RLS) en Supabase PostgreSQL
   console.log('Configurando políticas de seguridad a nivel de fila (RLS)...');
   try {
-    // RLS para Producto
     await prisma.$executeRawUnsafe(`ALTER TABLE "Producto" ENABLE ROW LEVEL SECURITY;`);
     await prisma.$executeRawUnsafe(`DROP POLICY IF EXISTS "Permitir lectura publica de Productos" ON "Producto";`);
     await prisma.$executeRawUnsafe(`CREATE POLICY "Permitir lectura publica de Productos" ON "Producto" FOR SELECT USING (true);`);
     await prisma.$executeRawUnsafe(`DROP POLICY IF EXISTS "Permitir escritura a admins en Productos" ON "Producto";`);
     await prisma.$executeRawUnsafe(`CREATE POLICY "Permitir escritura a admins en Productos" ON "Producto" FOR ALL TO authenticated USING (true) WITH CHECK (true);`);
 
-    // RLS para Categoria
     await prisma.$executeRawUnsafe(`ALTER TABLE "Categoria" ENABLE ROW LEVEL SECURITY;`);
     await prisma.$executeRawUnsafe(`DROP POLICY IF EXISTS "Permitir lectura publica de Categorias" ON "Categoria";`);
     await prisma.$executeRawUnsafe(`CREATE POLICY "Permitir lectura publica de Categorias" ON "Categoria" FOR SELECT USING (true);`);
     await prisma.$executeRawUnsafe(`DROP POLICY IF EXISTS "Permitir escritura a admins en Categorias" ON "Categoria";`);
     await prisma.$executeRawUnsafe(`CREATE POLICY "Permitir escritura a admins en Categorias" ON "Categoria" FOR ALL TO authenticated USING (true) WITH CHECK (true);`);
 
-    // RLS para Configuracion
     await prisma.$executeRawUnsafe(`ALTER TABLE "Configuracion" ENABLE ROW LEVEL SECURITY;`);
     await prisma.$executeRawUnsafe(`DROP POLICY IF EXISTS "Permitir lectura publica de Configuracion" ON "Configuracion";`);
     await prisma.$executeRawUnsafe(`CREATE POLICY "Permitir lectura publica de Configuracion" ON "Configuracion" FOR SELECT USING (true);`);
     await prisma.$executeRawUnsafe(`DROP POLICY IF EXISTS "Permitir escritura a admins en Configuracion" ON "Configuracion";`);
     await prisma.$executeRawUnsafe(`CREATE POLICY "Permitir escritura a admins en Configuracion" ON "Configuracion" FOR ALL TO authenticated USING (true) WITH CHECK (true);`);
 
-    // RLS para Administrador
     await prisma.$executeRawUnsafe(`ALTER TABLE "Administrador" ENABLE ROW LEVEL SECURITY;`);
     await prisma.$executeRawUnsafe(`DROP POLICY IF EXISTS "Permitir lectura a admins en Administrador" ON "Administrador";`);
     await prisma.$executeRawUnsafe(`CREATE POLICY "Permitir lectura a admins en Administrador" ON "Administrador" FOR SELECT TO authenticated USING (true);`);
@@ -212,7 +226,7 @@ async function main() {
 
     console.log('Políticas de RLS configuradas con éxito en PostgreSQL.');
   } catch (error) {
-    console.warn('Advertencia: No se pudieron aplicar las políticas SQL de RLS directamente. Esto es normal si estás usando una base de datos local de desarrollo sin el rol de administrador o extensión de Supabase. El sistema de base de datos sigue funcionando normalmente. Error:', error);
+    console.warn('Advertencia: No se pudieron aplicar las políticas SQL de RLS directamente:', error);
   }
 
   console.log('¡Siembra completada con éxito!');
