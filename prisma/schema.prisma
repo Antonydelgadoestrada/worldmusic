@@ -1,0 +1,65 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Categoria {
+  id        String     @id @default(uuid())
+  nombre    String     @unique
+  slug      String     @unique
+  productos Producto[]
+}
+
+model Producto {
+  id          String     @id @default(uuid())
+  titulo      String
+  descripcion String?    @db.Text
+  precio      Float
+  categoriaId String?
+  categoria   Categoria? @relation(fields: [categoriaId], references: [id], onDelete: SetNull)
+  imagen      String?    @db.Text
+  incluye     String?    @db.Text
+  slug        String     @unique
+  activo      Boolean    @default(true)
+  stock       Int        @default(0)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([categoriaId])
+  @@index([slug])
+}
+
+model Administrador {
+  id        String   @id @default(uuid())
+  nombre    String
+  email     String   @unique
+  password  String
+  createdAt DateTime   @default(now())
+}
+
+model Configuracion {
+  id                 String   @id @default("default")
+  whatsappNumber     String   @default("51989947606")
+  whatsappMessage    String?  @db.Text
+  address            String   @default("Av. Larco 123, Miraflores, Lima, Perú")
+  googleMapsUrl      String   @default("https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3900.756209503417!2d-77.03176712398555!3d-12.128802888114294!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x9105c81604a434c3%3A0x6b24d67362bf7d7!2sParque%20Kennedy!5e0!3m2!1ses-419!2spe!4v1700000000000!5m2!1ses-419!2spe")
+  facebookUrl        String?  @db.Text
+  instagramUrl       String?  @db.Text
+  tiktokUrl          String?  @db.Text
+  youtubeUrl         String?  @db.Text
+  aboutHistory       String?  @db.Text
+  aboutMission       String?  @db.Text
+  aboutVision        String?  @db.Text
+  aboutValues        String?  @db.Text
+  academyInfo        String?  @db.Text
+  policyGarantias    String?  @db.Text
+  policyCambios      String?  @db.Text
+  policyDevoluciones String?  @db.Text
+  policyHorarios     String?  @db.Text
+  policyContacto     String?  @db.Text
+}
