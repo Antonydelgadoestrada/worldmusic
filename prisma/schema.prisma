@@ -23,6 +23,7 @@ model Producto {
   categoriaId String?
   categoria   Categoria? @relation(fields: [categoriaId], references: [id], onDelete: SetNull)
   imagen      String?    @db.Text
+  imagenes    String[]   @default([])
   incluye     String?    @db.Text
   slug        String     @unique
   activo      Boolean    @default(true)

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { ShoppingCart, ArrowLeft, CheckCircle2, MessageCircle, Star } from 'lucide-react';
@@ -14,6 +14,7 @@ interface ProductDetailProps {
     descripcion: string | null;
     precio: number;
     imagen: string | null;
+    imagenes?: string[];
     incluye: string | null;
     slug: string;
     stock: number;
@@ -28,14 +29,32 @@ export default function ProductDetailClient({ product, whatsappNumber }: Product
   const [added, setAdded] = useState(false);
 
   const fallbackImage = 'https://images.unsplash.com/photo-1510915361894-db8b60106cb1?w=500&auto=format&fit=crop&q=80';
-  const imageUrl = product.imagen || fallbackImage;
+  const [activeImage, setActiveImage] = useState(product.imagen || fallbackImage);
+
+  // Combinar imagen principal y las imágenes secundarias del array de la galería
+  const allImages = [product.imagen, ...(product.imagenes || [])].filter(Boolean) as string[];
+
+  // Carrusel automático cada 3 segundos (se reinicia si el usuario interactúa manualmente)
+  useEffect(() => {
+    if (allImages.length <= 1) return;
+
+    const interval = setInterval(() => {
+      setActiveImage((current) => {
+        const currentIndex = allImages.indexOf(current);
+        const nextIndex = (currentIndex + 1) % allImages.length;
+        return allImages[nextIndex];
+      });
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [activeImage, allImages]);
 
   const handleAddToCart = () => {
     addToCart({
       id: product.id,
       titulo: product.titulo,
       precio: product.precio,
-      imagen: imageUrl,
+      imagen: product.imagen || fallbackImage,
       slug: product.slug,
     }, quantity);
     
@@ -61,25 +80,53 @@ export default function ProductDetailClient({ product, whatsappNumber }: Product
         <span>Volver al Catálogo</span>
       </Link>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
-        {/* Imagen del Producto */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="relative aspect-square w-full rounded-2xl overflow-hidden bg-neutral-50 dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 shadow-sm"
-        >
-          <Image
-            src={imageUrl}
-            alt={product.titulo}
-            fill
-            sizes="(max-w-7xl) 50vw, 100vw"
-            className="object-cover"
-            priority
-          />
-        </motion.div>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
+        {/* Galería de Imágenes (Columna Izquierda - Más Angosta) */}
+        <div className="lg:col-span-5 space-y-4">
+          <motion.div
+            key={activeImage} // Provoca re-animación al cambiar de foto
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="relative aspect-square w-full rounded-2xl overflow-hidden bg-neutral-50 dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 shadow-sm"
+          >
+            <Image
+              src={activeImage}
+              alt={product.titulo}
+              fill
+              sizes="(max-w-7xl) 40vw, 100vw"
+              className="object-cover"
+              priority
+            />
+          </motion.div>
 
-        {/* Detalles del Producto */}
-        <div className="space-y-6 lg:py-4">
+          {/* Miniaturas de la Galería */}
+          {allImages.length > 1 && (
+            <div className="flex flex-wrap gap-2.5 pt-1">
+              {allImages.map((img, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setActiveImage(img)}
+                  className={`relative w-16 h-16 rounded-xl overflow-hidden border-2 shrink-0 transition-all ${
+                    activeImage === img
+                      ? 'border-emerald-600 dark:border-emerald-450 ring-2 ring-emerald-500/10 scale-95'
+                      : 'border-neutral-200 dark:border-neutral-800 hover:border-neutral-400 dark:hover:border-neutral-600'
+                  }`}
+                >
+                  <Image
+                    src={img}
+                    alt={`Miniatura ${idx + 1}`}
+                    fill
+                    sizes="64px"
+                    className="object-cover"
+                  />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Detalles del Producto (Columna Derecha - Más Ancha) */}
+        <div className="lg:col-span-7 space-y-6 lg:py-2">
           <div className="space-y-2">
             {product.categoria && (
               <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/15">
@@ -102,10 +149,17 @@ export default function ProductDetailClient({ product, whatsappNumber }: Product
               <span className="text-neutral-400 dark:text-neutral-500 ml-1.5">(Recomendado)</span>
             </div>
             <div className="h-3 w-px bg-neutral-200 dark:bg-neutral-800" />
-            <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400" />
-              En stock ({product.stock} unidades)
-            </span>
+            {product.stock > 0 ? (
+              <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400 animate-pulse" />
+                Disponible
+              </span>
+            ) : (
+              <span className="text-rose-600 dark:text-rose-450 font-semibold flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-600 dark:bg-rose-450" />
+                No disponible
+              </span>
+            )}
           </div>
 
           {/* Precio */}
@@ -155,37 +209,49 @@ export default function ProductDetailClient({ product, whatsappNumber }: Product
           {/* Agregar al Carrito e Interacciones */}
           <div className="pt-4 border-t border-neutral-100 dark:border-neutral-900 flex flex-col sm:flex-row gap-4 items-center">
             {/* Control de Cantidad */}
-            <div className="flex items-center border border-neutral-200 dark:border-neutral-800 rounded-xl overflow-hidden bg-white dark:bg-neutral-950">
-              <button
-                onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                className="px-4 py-3 text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors font-bold"
-              >
-                -
-              </button>
-              <span className="px-5 text-sm font-bold text-neutral-900 dark:text-white w-12 text-center">
-                {quantity}
-              </span>
-              <button
-                onClick={() => setQuantity(quantity + 1)}
-                className="px-4 py-3 text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors font-bold"
-              >
-                +
-              </button>
-            </div>
+            {product.stock > 0 && (
+              <div className="flex items-center border border-neutral-200 dark:border-neutral-800 rounded-xl overflow-hidden bg-white dark:bg-neutral-950">
+                <button
+                  onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                  className="px-4 py-3 text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors font-bold"
+                >
+                  -
+                </button>
+                <span className="px-5 text-sm font-bold text-neutral-900 dark:text-white w-12 text-center">
+                  {quantity}
+                </span>
+                <button
+                  onClick={() => setQuantity(quantity + 1)}
+                  className="px-4 py-3 text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors font-bold"
+                >
+                  +
+                </button>
+              </div>
+            )}
 
             {/* Botón de Envío al Carrito */}
-            <motion.button
-              whileTap={{ scale: 0.98 }}
-              onClick={handleAddToCart}
-              className={`w-full sm:flex-grow py-3.5 px-6 font-bold rounded-xl text-sm flex items-center justify-center gap-2 shadow-sm transition-all ${
-                added
-                  ? 'bg-emerald-700 dark:bg-emerald-600 text-white'
-                  : 'bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-50 dark:hover:bg-neutral-200 dark:text-neutral-950 dark:hover:text-black text-white'
-              }`}
-            >
-              <ShoppingCart className="w-4 h-4" />
-              <span>{added ? '¡Añadido al Carrito!' : 'Agregar al Carrito'}</span>
-            </motion.button>
+            {product.stock > 0 ? (
+              <motion.button
+                whileTap={{ scale: 0.98 }}
+                onClick={handleAddToCart}
+                className={`w-full sm:flex-grow py-3.5 px-6 font-bold rounded-xl text-sm flex items-center justify-center gap-2 shadow-sm transition-all ${
+                  added
+                    ? 'bg-emerald-700 dark:bg-emerald-600 text-white'
+                    : 'bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-50 dark:hover:bg-neutral-200 dark:text-neutral-950 dark:hover:text-black text-white'
+                }`}
+              >
+                <ShoppingCart className="w-4 h-4" />
+                <span>{added ? '¡Añadido al Carrito!' : 'Agregar al Carrito'}</span>
+              </motion.button>
+            ) : (
+              <button
+                disabled
+                className="w-full py-3.5 px-6 font-bold rounded-xl text-sm flex items-center justify-center gap-2 bg-neutral-100 dark:bg-neutral-900 text-neutral-450 dark:text-neutral-500 cursor-not-allowed border border-neutral-205 dark:border-neutral-800"
+              >
+                <ShoppingCart className="w-4 h-4" />
+                <span>No disponible</span>
+              </button>
+            )}
           </div>
         </div>
       </div>

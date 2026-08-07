@@ -113,6 +113,7 @@ export async function saveProductAction(productData: {
   precio: number;
   categoriaId: string;
   imagen?: string;
+  imagenes?: string[];
   incluye?: string;
   stock?: number;
   activo?: boolean;
@@ -137,6 +138,7 @@ export async function saveProductAction(productData: {
           precio: Number(productData.precio),
           categoriaId: productData.categoriaId || null,
           imagen: productData.imagen,
+          imagenes: productData.imagenes || [],
           incluye: productData.incluye,
           stock: productData.stock !== undefined ? Number(productData.stock) : 0,
           activo: productData.activo !== undefined ? productData.activo : true,
@@ -155,6 +157,7 @@ export async function saveProductAction(productData: {
           precio: Number(productData.precio),
           categoriaId: productData.categoriaId || null,
           imagen: productData.imagen,
+          imagenes: productData.imagenes || [],
           incluye: productData.incluye,
           stock: productData.stock !== undefined ? Number(productData.stock) : 0,
           activo: productData.activo !== undefined ? productData.activo : true,

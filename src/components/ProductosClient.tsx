@@ -31,6 +31,7 @@ interface Product {
   descripcion: string | null;
   precio: number;
   imagen: string | null;
+  imagenes: string[];
   incluye: string | null;
   slug: string;
   activo: boolean;
@@ -70,6 +71,7 @@ export default function ProductosClient({ initialProducts, categories }: Product
     precio: 0,
     categoriaId: '',
     imagen: '',
+    imagenes: [] as string[],
     incluye: '',
     stock: 0,
     activo: true,
@@ -114,6 +116,7 @@ export default function ProductosClient({ initialProducts, categories }: Product
       precio: 0,
       categoriaId: categories[0]?.id || '',
       imagen: '',
+      imagenes: [],
       incluye: '',
       stock: 0,
       activo: true,
@@ -131,6 +134,7 @@ export default function ProductosClient({ initialProducts, categories }: Product
       precio: prod.precio,
       categoriaId: prod.categoriaId || '',
       imagen: prod.imagen || '',
+      imagenes: prod.imagenes || [],
       incluye: prod.incluye || '',
       stock: prod.stock,
       activo: prod.activo,
@@ -247,6 +251,64 @@ export default function ProductosClient({ initialProducts, categories }: Product
     } finally {
       setUploadingImage(false);
     }
+  };
+
+  // CONTROLADOR DE SUBIDA DE IMÁGENES SECUNDARIAS (GALERÍA)
+  const [uploadingGallery, setUploadingGallery] = useState(false);
+  const [galleryUploadMessage, setGalleryUploadMessage] = useState('');
+
+  const handleGalleryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setUploadingGallery(true);
+    setGalleryUploadMessage(`Subiendo ${files.length} imagen(es)...`);
+
+    try {
+      const uploadedUrls: string[] = [];
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
+        const filePath = `productos/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('instrumentos-images')
+          .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: true,
+          });
+
+        if (uploadError) {
+          throw new Error(uploadError.message);
+        }
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('instrumentos-images')
+          .getPublicUrl(filePath);
+
+        uploadedUrls.push(publicUrl);
+      }
+
+      setProductForm((prev) => ({
+        ...prev,
+        imagenes: [...(prev.imagenes || []), ...uploadedUrls]
+      }));
+      setGalleryUploadMessage('¡Imágenes agregadas correctamente!');
+    } catch (err: any) {
+      console.error('Error al subir imágenes de galería:', err);
+      setGalleryUploadMessage('Error al subir imágenes a la galería.');
+    } finally {
+      setUploadingGallery(false);
+    }
+  };
+
+  const handleRemoveGalleryImage = (idxToRemove: number) => {
+    setProductForm((prev) => ({
+      ...prev,
+      imagenes: (prev.imagenes || []).filter((_, idx) => idx !== idxToRemove)
+    }));
   };
 
   // IMPORTACIÓN DE EXCEL (CLIENT SIDE PARSE + BATCH SERVER ACTION)
@@ -705,6 +767,89 @@ export default function ProductosClient({ initialProducts, categories }: Product
                       />
                     </div>
                   </div>
+                </div>
+
+                {/* Galería de Imágenes Adicionales */}
+                <div className="space-y-3 sm:col-span-2 border-t border-neutral-100 dark:border-neutral-800 pt-4">
+                  <label className="block text-xs font-bold text-neutral-550 dark:text-neutral-400 uppercase tracking-wider">Galería de Imágenes (Fotos Secundarias)</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+                    {/* Carga de Archivos de Galería */}
+                    <div className="space-y-2 bg-neutral-50 dark:bg-neutral-950/50 p-4 border border-neutral-100 dark:border-neutral-800/80 rounded-xl">
+                      <span className="block text-xs font-semibold text-neutral-600">Subir imágenes adicionales a Supabase:</span>
+                      <div className="flex items-center gap-3">
+                        <label className="px-4 py-2 border border-neutral-250 dark:border-neutral-850 hover:bg-neutral-100 dark:hover:bg-neutral-900 text-neutral-700 dark:text-neutral-300 font-bold rounded-xl text-xs cursor-pointer flex items-center gap-1.5 transition-colors">
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>Agregar fotos</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            onChange={handleGalleryUpload}
+                            className="hidden"
+                          />
+                        </label>
+                        {uploadingGallery && <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />}
+                      </div>
+                      {galleryUploadMessage && (
+                        <p className="text-[10px] text-neutral-550 dark:text-neutral-400 font-medium leading-relaxed mt-1">
+                          {galleryUploadMessage}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Pegar URL Directa */}
+                    <div className="space-y-1.5 bg-neutral-50 dark:bg-neutral-950/50 p-4 border border-neutral-100 dark:border-neutral-800/80 rounded-xl">
+                      <span className="block text-xs font-semibold text-neutral-600 mb-1">O escribe URL directa para agregar:</span>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          id="manual-gallery-url"
+                          placeholder="https://images.unsplash.com/..."
+                          className="flex-grow px-3 py-2 bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-850 focus:border-emerald-600 outline-none rounded-lg text-xs transition-colors"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const inputEl = document.getElementById('manual-gallery-url') as HTMLInputElement;
+                            if (inputEl && inputEl.value.trim()) {
+                              setProductForm((prev) => ({
+                                ...prev,
+                                imagenes: [...(prev.imagenes || []), inputEl.value.trim()]
+                              }));
+                              inputEl.value = '';
+                            }
+                          }}
+                          className="px-3 py-1 bg-emerald-600 text-white font-bold rounded-lg text-xs"
+                        >
+                          Añadir
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Listado y Miniaturas de la Galería */}
+                  {productForm.imagenes && productForm.imagenes.length > 0 && (
+                    <div className="flex flex-wrap gap-3 p-3 border border-neutral-150 dark:border-neutral-850 rounded-xl bg-white dark:bg-neutral-950">
+                      {productForm.imagenes.map((imgUrl, idx) => (
+                        <div key={idx} className="relative w-16 h-16 rounded-lg overflow-hidden border border-neutral-200 dark:border-neutral-850 group">
+                          <Image
+                            src={imgUrl}
+                            alt={`Galería ${idx + 1}`}
+                            fill
+                            sizes="64px"
+                            className="object-cover"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveGalleryImage(idx)}
+                            className="absolute inset-0 bg-red-650/80 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-[10px] font-bold"
+                          >
+                            Eliminar
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Descripcion */}
