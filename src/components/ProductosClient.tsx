@@ -267,6 +267,7 @@ export default function ProductosClient({ initialProducts, categories }: Product
           const removeBackground = (await import('@imgly/background-removal')).default as any;
           
           const transparentBlob = await removeBackground(file, {
+            model: 'small', // Usamos el modelo pequeño (15MB) para mayor velocidad y compatibilidad en móviles
             progress: (key: string, current: number, total: number) => {
               const pct = Math.round((current / total) * 100);
               setUploadMessage(`Removiendo fondo: ${pct}%...`);
@@ -281,9 +282,9 @@ export default function ProductosClient({ initialProducts, categories }: Product
           const cleanName = file.name.replace(/\.[^/.]+$/, "") + "_white.jpg";
           fileToUpload = new File([whiteBgBlob], cleanName, { type: 'image/jpeg' });
           setUploadMessage('Fondo removido con éxito. Subiendo archivo...');
-        } catch (bgErr) {
+        } catch (bgErr: any) {
           console.error('Error al procesar fondo blanco:', bgErr);
-          setUploadMessage('Advertencia: No se pudo remover fondo. Subiendo original...');
+          setUploadMessage(`Advertencia: No se pudo remover fondo (${bgErr.message || bgErr}). Subiendo original...`);
         }
       }
 
@@ -294,7 +295,7 @@ export default function ProductosClient({ initialProducts, categories }: Product
       // Subir archivo al bucket 'instrumentos-images'
       const { error: uploadError } = await supabase.storage
         .from('instrumentos-images')
-        .upload(filePath, file, {
+        .upload(filePath, fileToUpload, {
           cacheControl: '3600',
           upsert: true,
         });
@@ -873,6 +874,30 @@ export default function ProductosClient({ initialProducts, categories }: Product
                       />
                     </div>
                   </div>
+
+                  {/* Vista Previa y Opción de Eliminar Imagen Principal */}
+                  {productForm.imagen && (
+                    <div className="mt-3.5 flex items-center gap-4 p-3 border border-neutral-150 dark:border-neutral-850 rounded-xl bg-white dark:bg-neutral-950 max-w-md">
+                      <div className="relative w-14 h-14 rounded-lg overflow-hidden border border-neutral-200 dark:border-neutral-800 shrink-0">
+                        <img
+                          src={productForm.imagen}
+                          alt="Vista previa principal"
+                          className="object-cover w-full h-full"
+                        />
+                      </div>
+                      <div className="flex-grow space-y-0.5">
+                        <span className="block text-[9px] font-bold text-emerald-650 dark:text-emerald-400 uppercase tracking-wider">Imagen Principal Seleccionada</span>
+                        <p className="text-[10px] text-neutral-500 truncate max-w-[160px]">{productForm.imagen}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setProductForm((p) => ({ ...p, imagen: '' }))}
+                        className="px-2.5 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 font-bold rounded-lg text-xs transition-colors"
+                      >
+                        Eliminar
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Galería de Imágenes Adicionales */}

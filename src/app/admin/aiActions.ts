@@ -29,8 +29,8 @@ export async function generateDescriptionWithIAAction(titulo: string, imageUrl: 
     // 2. Inicializar el cliente SDK de Gemini
     const genAI = new GoogleGenerativeAI(apiKey);
     
-    // Usamos el modelo rápido y multimodal gemini-1.5-flash
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    // Usamos el modelo rápido y de alto rendimiento gemini-2.5-flash
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
     // 3. Redactar el Prompt para un tono comercial y orientado a música
     const prompt = `Genera una descripción detallada, atractiva y comercial en español para un instrumento musical titulado "${titulo}". Explica sus características más notorias apreciables en la foto, maderas/materiales de construcción, su tipo de sonido y para qué niveles de músico (principiante, intermedio o avanzado) es idóneo. Limítate estrictamente a un único párrafo de máximo 3 o 4 líneas. Evita usar viñetas o listas. Sé directo, persuasivo y entusiasta.`;
