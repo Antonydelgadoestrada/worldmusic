@@ -94,7 +94,7 @@ export default function ProductDetailClient({ product, whatsappNumber }: Product
               alt={product.titulo}
               fill
               sizes="(max-w-7xl) 40vw, 100vw"
-              className="object-cover"
+              className="object-contain p-4"
               priority
             />
           </motion.div>

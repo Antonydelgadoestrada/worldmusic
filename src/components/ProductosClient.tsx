@@ -335,15 +335,49 @@ export default function ProductosClient({ initialProducts, categories }: Product
     try {
       const uploadedUrls: string[] = [];
 
+      // Cargar el módulo si la remoción está activa, una sola vez antes del bucle
+      let removeBackground: any = null;
+      if (removeBgEnabled) {
+        setGalleryUploadMessage('Cargando módulo de remoción de fondo...');
+        removeBackground = (await import('@imgly/background-removal')).default;
+      }
+
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        const fileExt = file.name.split('.').pop();
+        let fileToUpload = file;
+
+        // Si está activo, remover fondo y pintar blanco en cada foto de la galería
+        if (removeBgEnabled && removeBackground) {
+          setGalleryUploadMessage(`Procesando foto ${i + 1} de ${files.length}...`);
+          try {
+            const transparentBlob = await removeBackground(file, {
+              model: 'small', // Modelo optimizado para mayor velocidad y menor memoria
+              progress: (key: string, current: number, total: number) => {
+                const pct = Math.round((current / total) * 100);
+                setGalleryUploadMessage(`Procesando foto ${i + 1} de ${files.length}: ${pct}%...`);
+              }
+            });
+            
+            const transparentFile = new File([transparentBlob], 'temp.png', { type: 'image/png' });
+            setGalleryUploadMessage(`Foto ${i + 1} de ${files.length}: Pintando fondo blanco...`);
+            const whiteBgBlob = await addWhiteBackground(transparentFile);
+            
+            const cleanName = file.name.replace(/\.[^/.]+$/, "") + "_white.jpg";
+            fileToUpload = new File([whiteBgBlob], cleanName, { type: 'image/jpeg' });
+          } catch (bgErr: any) {
+            console.error(`Error al procesar fondo blanco en foto ${i + 1}:`, bgErr);
+            // Si falla la IA en una foto, continúa con la original
+          }
+        }
+
+        const fileExt = fileToUpload.name.split('.').pop();
         const fileName = `${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
         const filePath = `productos/${fileName}`;
 
+        setGalleryUploadMessage(`Subiendo foto ${i + 1} de ${files.length}...`);
         const { error: uploadError } = await supabase.storage
           .from('instrumentos-images')
-          .upload(filePath, file, {
+          .upload(filePath, fileToUpload, {
             cacheControl: '3600',
             upsert: true,
           });
