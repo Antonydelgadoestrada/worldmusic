@@ -12,7 +12,9 @@
     "db:setup": "npx prisma migrate dev && npx prisma db seed"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@hookform/resolvers": "^5.7.1",
+    "@imgly/background-removal": "^1.7.0",
     "@prisma/client": "^6.19.3",
     "@supabase/ssr": "^0.12.4",
     "@supabase/supabase-js": "^2.112.2",

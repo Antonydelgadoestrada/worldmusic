@@ -8,6 +8,7 @@ import {
   importExcelProductsAction
 } from '@/app/admin/actions';
 import { createClient } from '@/lib/supabase/client';
+import { generateDescriptionWithIAAction } from '@/app/admin/aiActions';
 import {
   Search,
   Plus,
@@ -51,6 +52,38 @@ interface ProductosClientProps {
   categories: Category[];
 }
 
+// Utilidad para pintar un fondo blanco sólido (#FFFFFF) sobre un PNG transparente
+// y exportarlo como un archivo JPG de alta calidad
+async function addWhiteBackground(imageFile: File): Promise<Blob> {
+  return new Promise((resolve) => {
+    const img = new window.Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(imageFile); // Fallback si no hay contexto
+        return;
+      }
+      // Pintar fondo blanco
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // Dibujar imagen transparente encima
+      ctx.drawImage(img, 0, 0);
+      canvas.toBlob((blob) => {
+        if (blob) {
+          resolve(blob);
+        } else {
+          resolve(imageFile);
+        }
+      }, 'image/jpeg', 0.9);
+    };
+    img.onerror = () => resolve(imageFile);
+    img.src = URL.createObjectURL(imageFile);
+  });
+}
+
 export default function ProductosClient({ initialProducts, categories }: ProductosClientProps) {
   const [products, setProducts] = useState<Product[]>(initialProducts);
   const [search, setSearch] = useState('');
@@ -91,6 +124,10 @@ export default function ProductosClient({ initialProducts, categories }: Product
 
   // Cliente Supabase
   const supabase = createClient();
+
+  // Estados de IA y Procesamiento de Imagen
+  const [removeBgEnabled, setRemoveBgEnabled] = useState(false);
+  const [generatingDescription, setGeneratingDescription] = useState(false);
 
   // Filtrado de Productos en Cliente
   const filteredProducts = useMemo(() => {
@@ -217,10 +254,40 @@ export default function ProductosClient({ initialProducts, categories }: Product
     if (!file) return;
 
     setUploadingImage(true);
-    setUploadMessage('');
+    setUploadMessage('Iniciando subida...');
 
     try {
-      const fileExt = file.name.split('.').pop();
+      let fileToUpload = file;
+
+      // Si la remoción de fondo está activada, procesamos la imagen antes de subirla
+      if (removeBgEnabled) {
+        setUploadMessage('Removiendo fondo de la imagen... (IA local, esto toma unos segundos)');
+        try {
+          // Importación dinámica en cliente para evitar que Next.js falle en SSR
+          const removeBackground = (await import('@imgly/background-removal')).default as any;
+          
+          const transparentBlob = await removeBackground(file, {
+            progress: (key: string, current: number, total: number) => {
+              const pct = Math.round((current / total) * 100);
+              setUploadMessage(`Removiendo fondo: ${pct}%...`);
+            }
+          });
+          
+          const transparentFile = new File([transparentBlob], 'temp.png', { type: 'image/png' });
+          setUploadMessage('Pintando fondo blanco...');
+          const whiteBgBlob = await addWhiteBackground(transparentFile);
+          
+          // Generar archivo final JPG
+          const cleanName = file.name.replace(/\.[^/.]+$/, "") + "_white.jpg";
+          fileToUpload = new File([whiteBgBlob], cleanName, { type: 'image/jpeg' });
+          setUploadMessage('Fondo removido con éxito. Subiendo archivo...');
+        } catch (bgErr) {
+          console.error('Error al procesar fondo blanco:', bgErr);
+          setUploadMessage('Advertencia: No se pudo remover fondo. Subiendo original...');
+        }
+      }
+
+      const fileExt = fileToUpload.name.split('.').pop();
       const fileName = `${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
       const filePath = `productos/${fileName}`;
 
@@ -309,6 +376,33 @@ export default function ProductosClient({ initialProducts, categories }: Product
       ...prev,
       imagenes: (prev.imagenes || []).filter((_, idx) => idx !== idxToRemove)
     }));
+  };
+
+  // ACCIÓN GENERAR DESCRIPCIÓN CON GEMINI IA
+  const handleGenerateAIDescription = async () => {
+    if (!productForm.titulo.trim()) {
+      alert('Por favor, escribe primero el Título del producto.');
+      return;
+    }
+    if (!productForm.imagen) {
+      alert('Por favor, sube o ingresa primero la Imagen principal del producto.');
+      return;
+    }
+
+    setGeneratingDescription(true);
+    try {
+      const res = await generateDescriptionWithIAAction(productForm.titulo, productForm.imagen);
+      if (res.success && res.description) {
+        setProductForm((prev) => ({ ...prev, descripcion: res.description }));
+      } else {
+        alert(res.error || 'No se pudo generar la descripción.');
+      }
+    } catch (err: any) {
+      console.error('Error al generar descripción con IA:', err);
+      alert('Ocurrió un error al contactar al servidor de inteligencia artificial.');
+    } finally {
+      setGeneratingDescription(false);
+    }
   };
 
   // IMPORTACIÓN DE EXCEL (CLIENT SIDE PARSE + BATCH SERVER ACTION)
@@ -735,7 +829,7 @@ export default function ProductosClient({ initialProducts, categories }: Product
                     {/* Carga de Archivo */}
                     <div className="space-y-2 bg-neutral-50 dark:bg-neutral-950/50 p-4 border border-neutral-100 dark:border-neutral-800/80 rounded-xl">
                       <span className="block text-xs font-semibold text-neutral-600">Subir a Supabase Storage:</span>
-                      <div className="flex items-center gap-3">
+                      <div className="flex flex-wrap items-center gap-3">
                         <label className="px-4 py-2 border border-neutral-250 dark:border-neutral-850 hover:bg-neutral-100 dark:hover:bg-neutral-900 text-neutral-700 dark:text-neutral-300 font-bold rounded-xl text-xs cursor-pointer flex items-center gap-1.5 transition-colors">
                           <Upload className="w-3.5 h-3.5" />
                           <span>Seleccionar archivo</span>
@@ -746,6 +840,18 @@ export default function ProductosClient({ initialProducts, categories }: Product
                             className="hidden"
                           />
                         </label>
+
+                        {/* Checkbox para Remover Fondo */}
+                        <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-neutral-600 dark:text-neutral-400 select-none">
+                          <input
+                            type="checkbox"
+                            checked={removeBgEnabled}
+                            onChange={(e) => setRemoveBgEnabled(e.target.checked)}
+                            className="w-4 h-4 rounded border-neutral-300 text-emerald-600 accent-emerald-600 focus:ring-emerald-500"
+                          />
+                          <span>Fondo blanco (IA)</span>
+                        </label>
+
                         {uploadingImage && <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />}
                       </div>
                       {uploadMessage && (
@@ -854,7 +960,26 @@ export default function ProductosClient({ initialProducts, categories }: Product
 
                 {/* Descripcion */}
                 <div className="space-y-1.5 sm:col-span-2">
-                  <label className="block text-xs font-bold text-neutral-550 dark:text-neutral-400 uppercase tracking-wider">Descripción del Producto</label>
+                  <div className="flex justify-between items-center">
+                    <label className="block text-xs font-bold text-neutral-550 dark:text-neutral-400 uppercase tracking-wider">Descripción del Producto</label>
+                    <button
+                      type="button"
+                      disabled={generatingDescription}
+                      onClick={handleGenerateAIDescription}
+                      className="px-3 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-650 dark:text-emerald-400 text-[10px] font-bold rounded-lg border border-emerald-500/15 flex items-center gap-1 transition-all disabled:opacity-50 disabled:cursor-not-allowed select-none"
+                    >
+                      {generatingDescription ? (
+                        <>
+                          <Loader2 className="w-3 h-3 animate-spin text-emerald-600" />
+                          <span>Generando...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>✨ Generar con IA</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
                   <textarea
                     value={productForm.descripcion}
                     onChange={(e) => setProductForm((p) => ({ ...p, descripcion: e.target.value }))}
