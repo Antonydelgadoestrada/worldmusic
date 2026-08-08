@@ -1,6 +1,7 @@
 'use server';
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { Client } from '@gradio/client';
 
 const apiKey = process.env.GEMINI_API_KEY;
 
@@ -51,5 +52,45 @@ export async function generateDescriptionWithIAAction(titulo: string, imageUrl: 
   } catch (error: any) {
     console.error('Error en generateDescriptionWithIAAction:', error);
     return { error: 'Error al generar la descripción: ' + error.message };
+  }
+}
+
+export async function removeBackgroundAction(imageUrl: string) {
+  try {
+    if (!imageUrl) {
+      return { error: 'No se proporcionó la URL de la imagen.' };
+    }
+
+    // Conectar a Hugging Face Space ZhengPeng7/BiRefNet_demo
+    const app = await Client.connect('ZhengPeng7/BiRefNet_demo');
+    
+    const result = await app.predict('/URL', {
+      images: imageUrl,
+      resolution: '1024x1024',
+      weights_file: 'General'
+    }) as any;
+
+    if (result && result.data && result.data[0] && result.data[0][1]) {
+      const transparentImageUrl = result.data[0][1].url;
+      
+      // Descargar la imagen transparente y convertirla a base64 Data URL
+      const imgResponse = await fetch(transparentImageUrl);
+      if (!imgResponse.ok) {
+        throw new Error('No se pudo descargar la imagen procesada de los servidores de IA.');
+      }
+      
+      const arrayBuffer = await imgResponse.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      const mimeType = imgResponse.headers.get('content-type') || 'image/png';
+      const base64Data = buffer.toString('base64');
+      const base64DataUrl = `data:${mimeType};base64,${base64Data}`;
+
+      return { success: true, transparentImageUrl: base64DataUrl };
+    } else {
+      return { error: 'La IA de remoción de fondo no devolvió un resultado válido.' };
+    }
+  } catch (error: any) {
+    console.error('Error en removeBackgroundAction:', error);
+    return { error: 'Error del servidor de IA (Hugging Face): ' + error.message };
   }
 }
