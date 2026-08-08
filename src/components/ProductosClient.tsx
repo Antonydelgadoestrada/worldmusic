@@ -268,6 +268,7 @@ export default function ProductosClient({ initialProducts, categories }: Product
           
           const transparentBlob = await removeBackground(file, {
             model: 'small', // Usamos el modelo pequeño (15MB) para mayor velocidad y compatibilidad en móviles
+            publicPath: 'https://unpkg.com/@imgly/background-removal-data@1.7.0/dist/',
             progress: (key: string, current: number, total: number) => {
               const pct = Math.round((current / total) * 100);
               setUploadMessage(`Removiendo fondo: ${pct}%...`);
@@ -352,6 +353,7 @@ export default function ProductosClient({ initialProducts, categories }: Product
           try {
             const transparentBlob = await removeBackground(file, {
               model: 'small', // Modelo optimizado para mayor velocidad y menor memoria
+              publicPath: 'https://unpkg.com/@imgly/background-removal-data@1.7.0/dist/',
               progress: (key: string, current: number, total: number) => {
                 const pct = Math.round((current / total) * 100);
                 setGalleryUploadMessage(`Procesando foto ${i + 1} de ${files.length}: ${pct}%...`);
