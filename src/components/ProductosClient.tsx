@@ -53,34 +53,38 @@ interface ProductosClientProps {
 }
 
 // Utilidad para pintar un fondo blanco sólido (#FFFFFF) sobre una imagen transparente (base64 o URL)
-// y exportarla como un archivo JPG de alta calidad
+// Corrigiendo automáticamente la rotación EXIF de fotos tomadas verticalmente con celulares
 async function addWhiteBackground(imageSrc: string): Promise<Blob> {
+  const response = await fetch(imageSrc);
+  const blob = await response.blob();
+  
+  // window.createImageBitmap con imageOrientation: 'from-image' detecta y corrige la rotación EXIF automáticamente
+  const bitmap = await window.createImageBitmap(blob, { imageOrientation: 'from-image' });
+  
+  const canvas = document.createElement('canvas');
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('No se pudo crear el contexto del canvas.');
+  }
+  
+  // Pintar fondo blanco
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  
+  // Dibujar el bitmap con su orientación EXIF ya corregida
+  ctx.drawImage(bitmap, 0, 0);
+  
   return new Promise((resolve, reject) => {
-    const img = new window.Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        reject(new Error('No se pudo crear el contexto del canvas.'));
-        return;
+    canvas.toBlob((outputBlob) => {
+      if (outputBlob) {
+        resolve(outputBlob);
+      } else {
+        reject(new Error('Fallo al exportar el canvas a Blob.'));
       }
-      // Pintar fondo blanco
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      // Dibujar imagen transparente encima
-      ctx.drawImage(img, 0, 0);
-      canvas.toBlob((blob) => {
-        if (blob) {
-          resolve(blob);
-        } else {
-          reject(new Error('Fallo al exportar el canvas a Blob.'));
-        }
-      }, 'image/jpeg', 0.95);
-    };
-    img.onerror = () => reject(new Error('Fallo al cargar la imagen en canvas.'));
-    img.src = imageSrc;
+    }, 'image/jpeg', 0.95);
   });
 }
 
@@ -295,18 +299,28 @@ export default function ProductosClient({ initialProducts, categories }: Product
           const cleanName = file.name.replace(/\.[^/.]+$/, "") + "_white.jpg";
           const whiteBgFile = new File([whiteBgBlob], cleanName, { type: 'image/jpeg' });
 
+          // Subir a un nuevo path con ID aleatorio para forzar al navegador a refrescar la caché
+          const processedFileName = `${Math.random().toString(36).substring(2, 15)}_white.jpg`;
+          const processedFilePath = `productos/${processedFileName}`;
+
           setUploadMessage('Guardando versión con fondo blanco...');
           const { error: processedUploadError } = await supabase.storage
             .from('instrumentos-images')
-            .upload(filePath, whiteBgFile, {
+            .upload(processedFilePath, whiteBgFile, {
               cacheControl: '3600',
-              upsert: true, // Sobrescribir el original
+              upsert: true,
             });
 
           if (processedUploadError) {
             throw new Error(processedUploadError.message);
           }
 
+          // Obtener la nueva URL del archivo con fondo blanco para la imagen principal
+          const { data: { publicUrl: processedPublicUrl } } = supabase.storage
+            .from('instrumentos-images')
+            .getPublicUrl(processedFilePath);
+
+          finalUrl = processedPublicUrl;
           setUploadMessage('¡Fondo blanco aplicado correctamente!');
         } catch (bgErr: any) {
           console.error('Error al procesar fondo blanco:', bgErr);
@@ -383,17 +397,28 @@ export default function ProductosClient({ initialProducts, categories }: Product
             const cleanName = file.name.replace(/\.[^/.]+$/, "") + "_white.jpg";
             const whiteBgFile = new File([whiteBgBlob], cleanName, { type: 'image/jpeg' });
 
+            // Subir a un nuevo path con ID aleatorio para evitar problemas de caché en la galería
+            const processedFileName = `${Math.random().toString(36).substring(2, 15)}_white.jpg`;
+            const processedFilePath = `productos/${processedFileName}`;
+
             setGalleryUploadMessage(`Guardando versión con fondo blanco para foto ${i + 1}...`);
             const { error: processedUploadError } = await supabase.storage
               .from('instrumentos-images')
-              .upload(filePath, whiteBgFile, {
+              .upload(processedFilePath, whiteBgFile, {
                 cacheControl: '3600',
-                upsert: true, // Sobrescribir el original
+                upsert: true,
               });
 
             if (processedUploadError) {
               throw new Error(processedUploadError.message);
             }
+
+            // Obtener la URL del archivo de la galería con fondo blanco
+            const { data: { publicUrl: processedPublicUrl } } = supabase.storage
+              .from('instrumentos-images')
+              .getPublicUrl(processedFilePath);
+
+            finalUrl = processedPublicUrl;
           } catch (bgErr: any) {
             console.error(`Error al procesar fondo blanco en foto ${i + 1}:`, bgErr);
             alert(`Advertencia en foto ${i + 1}: ${bgErr.message || bgErr}. Se mantendrá original.`);
