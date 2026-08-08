@@ -61,13 +61,11 @@ export async function removeBackgroundAction(imageUrl: string) {
       return { error: 'No se proporcionó la URL de la imagen.' };
     }
 
-    // Conectar a Hugging Face Space ZhengPeng7/BiRefNet_demo
-    const app = await Client.connect('ZhengPeng7/BiRefNet_demo');
+    // Conectar a Hugging Face Space not-lain/background-removal (Basado en CPU, libre de cuotas ZeroGPU)
+    const app = await Client.connect('not-lain/background-removal');
     
-    const result = await app.predict('/URL', {
-      images: imageUrl,
-      resolution: '1024x1024',
-      weights_file: 'General'
+    const result = await app.predict('/text', {
+      image: imageUrl
     }) as any;
 
     if (result && result.data && result.data[0] && result.data[0][1]) {
