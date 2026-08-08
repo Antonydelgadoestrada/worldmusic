@@ -59,7 +59,7 @@ export default function ProductCard({
           alt={titulo}
           fill
           sizes="(max-w-7xl) 33vw, 50vw"
-          className="object-contain p-3 group-hover:scale-102 transition-transform duration-500"
+          className="object-cover group-hover:scale-105 transition-transform duration-500"
           loading="lazy"
         />
         {/* Badge de Categoría */}
