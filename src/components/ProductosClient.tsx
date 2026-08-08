@@ -88,6 +88,45 @@ async function addWhiteBackground(imageSrc: string): Promise<Blob> {
   });
 }
 
+// Corrige la rotación EXIF de cualquier archivo de imagen de entrada en el cliente
+// devolviendo un nuevo archivo File con los píxeles orientados correctamente y listos para subir
+async function correctExifRotation(file: File): Promise<File> {
+  try {
+    if (!file.type.startsWith('image/') || !window.createImageBitmap) {
+      return file;
+    }
+    
+    // Convertir el archivo a un Bitmap corrigiendo la orientación EXIF automáticamente
+    const bitmap = await window.createImageBitmap(file, { imageOrientation: 'from-image' });
+    
+    // Crear canvas con las dimensiones del bitmap corregido
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return file;
+    
+    // Dibujar el bitmap corregido
+    ctx.drawImage(bitmap, 0, 0);
+    
+    // Exportar a Blob y retornar como File
+    return new Promise((resolve) => {
+      canvas.toBlob((blob) => {
+        if (blob) {
+          const cleanName = file.name.replace(/\.[^/.]+$/, "") + "_oriented.jpg";
+          resolve(new File([blob], cleanName, { type: 'image/jpeg' }));
+        } else {
+          resolve(file);
+        }
+      }, 'image/jpeg', 0.95);
+    });
+  } catch (err) {
+    console.error('Error al corregir rotación EXIF:', err);
+    return file; // Fallback al original si falla
+  }
+}
+
 export default function ProductosClient({ initialProducts, categories }: ProductosClientProps) {
   const [products, setProducts] = useState<Product[]>(initialProducts);
   const [search, setSearch] = useState('');
@@ -130,7 +169,8 @@ export default function ProductosClient({ initialProducts, categories }: Product
   const supabase = createClient();
 
   // Estados de IA y Procesamiento de Imagen
-  const [removeBgEnabled, setRemoveBgEnabled] = useState(false);
+  const [removeBgEnabled, setRemoveBgEnabled] = useState(true);
+  const [removeBgEnabledGallery, setRemoveBgEnabledGallery] = useState(true);
   const [generatingDescription, setGeneratingDescription] = useState(false);
 
   // Filtrado de Productos en Cliente
@@ -254,13 +294,16 @@ export default function ProductosClient({ initialProducts, categories }: Product
 
   // CONTROLADOR DE SUBIDA DE IMAGEN A SUPABASE STORAGE
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const originalFile = e.target.files?.[0];
+    if (!originalFile) return;
 
     setUploadingImage(true);
-    setUploadMessage('Subiendo imagen a Supabase...');
+    setUploadMessage('Corrigiendo rotación y subiendo a Supabase...');
 
     try {
+      // 0. Corregir rotación EXIF de la imagen original antes de cualquier subida
+      const file = await correctExifRotation(originalFile);
+
       // 1. Primero subimos la imagen original de forma segura y rápida
       const fileExt = file.name.split('.').pop();
       const fileName = `${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
@@ -351,13 +394,16 @@ export default function ProductosClient({ initialProducts, categories }: Product
     if (!files || files.length === 0) return;
 
     setUploadingGallery(true);
-    setGalleryUploadMessage(`Subiendo ${files.length} imagen(es)...`);
+    setGalleryUploadMessage(`Procesando ${files.length} imagen(es)...`);
 
     try {
       const uploadedUrls: string[] = [];
 
       for (let i = 0; i < files.length; i++) {
-        const file = files[i];
+        const originalFile = files[i];
+        
+        setGalleryUploadMessage(`Corrigiendo rotación de foto ${i + 1} de ${files.length}...`);
+        const file = await correctExifRotation(originalFile);
         
         // 1. Primero subimos la imagen original de forma segura
         const fileExt = file.name.split('.').pop();
@@ -383,7 +429,7 @@ export default function ProductosClient({ initialProducts, categories }: Product
         let finalUrl = publicUrl;
 
         // 2. Si está activo, removemos el fondo usando el servidor y pintamos blanco localmente
-        if (removeBgEnabled) {
+        if (removeBgEnabledGallery) {
           setGalleryUploadMessage(`Procesando foto ${i + 1} de ${files.length} (IA)...`);
           try {
             const res = await removeBackgroundAction(publicUrl);
@@ -988,6 +1034,16 @@ export default function ProductosClient({ initialProducts, categories }: Product
                             onChange={handleGalleryUpload}
                             className="hidden"
                           />
+                        </label>
+                        {/* Checkbox para Remover Fondo de Galería */}
+                        <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-neutral-600 dark:text-neutral-400 select-none">
+                          <input
+                            type="checkbox"
+                            checked={removeBgEnabledGallery}
+                            onChange={(e) => setRemoveBgEnabledGallery(e.target.checked)}
+                            className="w-4 h-4 rounded border-neutral-300 text-emerald-600 accent-emerald-600 focus:ring-emerald-500"
+                          />
+                          <span>Fondo blanco (IA)</span>
                         </label>
                         {uploadingGallery && <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />}
                       </div>
