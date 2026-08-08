@@ -34,20 +34,7 @@ export default function ProductDetailClient({ product, whatsappNumber }: Product
   // Combinar imagen principal y las imágenes secundarias del array de la galería
   const allImages = [product.imagen, ...(product.imagenes || [])].filter(Boolean) as string[];
 
-  // Carrusel automático cada 3 segundos (se reinicia si el usuario interactúa manualmente)
-  useEffect(() => {
-    if (allImages.length <= 1) return;
 
-    const interval = setInterval(() => {
-      setActiveImage((current) => {
-        const currentIndex = allImages.indexOf(current);
-        const nextIndex = (currentIndex + 1) % allImages.length;
-        return allImages[nextIndex];
-      });
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, [activeImage, allImages]);
 
   const handleAddToCart = () => {
     addToCart({

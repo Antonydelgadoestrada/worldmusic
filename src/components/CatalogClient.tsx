@@ -14,6 +14,7 @@ interface Product {
   slug: string;
   categoriaId: string | null;
   categoria?: { nombre: string } | null;
+  imagenes?: string[];
 }
 
 interface Category {
@@ -306,6 +307,7 @@ export default function CatalogClient({
                     imagen={product.imagen}
                     slug={product.slug}
                     categoria={product.categoria}
+                    imagenes={product.imagenes}
                   />
                 </motion.div>
               ))}

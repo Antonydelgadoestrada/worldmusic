@@ -16,6 +16,7 @@ export interface ProductCardProps {
   slug: string;
   categoria?: { nombre: string } | null;
   incluye?: string | null;
+  imagenes?: string[];
 }
 
 export default function ProductCard({
@@ -26,11 +27,31 @@ export default function ProductCard({
   imagen,
   slug,
   categoria,
+  imagenes,
 }: ProductCardProps) {
   const { addToCart } = useCart();
 
   const fallbackImage = 'https://images.unsplash.com/photo-1510915361894-db8b60106cb1?w=500&auto=format&fit=crop&q=80';
-  const imageUrl = imagen || fallbackImage;
+  
+  // Combinar imagen principal e imágenes de galería de forma única
+  const allImages = React.useMemo(() => {
+    return Array.from(new Set([imagen, ...(imagenes || [])].filter((img): img is string => !!img)));
+  }, [imagen, imagenes]);
+
+  const [currentImageIdx, setCurrentImageIdx] = React.useState(0);
+
+  // Ciclar la imagen de vista previa cada 3 segundos si hay múltiples fotos
+  React.useEffect(() => {
+    if (allImages.length <= 1) return;
+
+    const interval = setInterval(() => {
+      setCurrentImageIdx((prev) => (prev + 1) % allImages.length);
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [allImages]);
+
+  const imageUrl = allImages[currentImageIdx] || fallbackImage;
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -62,6 +83,23 @@ export default function ProductCard({
           className="object-cover group-hover:scale-105 transition-transform duration-500"
           loading="lazy"
         />
+        
+        {/* Indicadores de Galería (Puntos) */}
+        {allImages.length > 1 && (
+          <div className="absolute bottom-3.5 left-1/2 -translate-x-1/2 z-10 flex gap-1.5 bg-black/40 dark:bg-black/60 backdrop-blur-[2px] px-2 py-1 rounded-full border border-white/10">
+            {allImages.map((_, idx) => (
+              <span
+                key={idx}
+                className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${
+                  currentImageIdx === idx
+                    ? 'bg-white scale-110'
+                    : 'bg-white/40'
+                }`}
+              />
+            ))}
+          </div>
+        )}
+
         {/* Badge de Categoría */}
         {categoria && (
           <span className="absolute top-3 left-3 z-10 bg-white/90 dark:bg-neutral-900/90 backdrop-blur-sm text-[10px] font-bold text-neutral-800 dark:text-neutral-200 uppercase tracking-widest px-2.5 py-1 rounded-full border border-neutral-100/50 dark:border-neutral-800/50">
