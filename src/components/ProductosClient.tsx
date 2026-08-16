@@ -298,20 +298,53 @@ export default function ProductosClient({ initialProducts, categories }: Product
     if (!originalFile) return;
 
     setUploadingImage(true);
-    setUploadMessage('Corrigiendo rotación y subiendo a Supabase...');
+    setUploadMessage('Corrigiendo rotación...');
 
     try {
       // 0. Corregir rotación EXIF de la imagen original antes de cualquier subida
       const file = await correctExifRotation(originalFile);
+      let fileToUpload = file;
 
-      // 1. Primero subimos la imagen original de forma segura y rápida
-      const fileExt = file.name.split('.').pop();
+      // 1. Si la remoción de fondo está activada, procesamos localmente en el navegador
+      if (removeBgEnabled) {
+        setUploadMessage('Removiendo fondo de la imagen localmente... (IA en navegador)');
+        try {
+          const imglyRemoveBackground = (await import('@imgly/background-removal')).default as any;
+          
+          const fileUrl = URL.createObjectURL(file);
+          const transparentBlob = await imglyRemoveBackground(fileUrl, {
+            model: 'medium',
+            progress: (key: string, current: number, total: number) => {
+              const percent = Math.round((current / total) * 100);
+              setUploadMessage(`Procesando IA: ${percent}%`);
+            }
+          });
+          URL.revokeObjectURL(fileUrl);
+
+          setUploadMessage('Pintando fondo blanco y optimizando...');
+          const transparentUrl = URL.createObjectURL(transparentBlob);
+          const whiteBgBlob = await addWhiteBackground(transparentUrl);
+          URL.revokeObjectURL(transparentUrl);
+          
+          const cleanName = file.name.replace(/\.[^/.]+$/, "") + "_white.jpg";
+          fileToUpload = new File([whiteBgBlob], cleanName, { type: 'image/jpeg' });
+          setUploadMessage('Preparando subida...');
+        } catch (bgErr: any) {
+          console.error('Error al procesar fondo blanco localmente:', bgErr);
+          alert(`Advertencia: No se pudo remover fondo localmente (${bgErr.message || bgErr}). Se mantendrá la imagen original.`);
+          setUploadMessage('Se guardará la imagen original (Fallo IA).');
+        }
+      }
+
+      // 2. Subir el archivo final a Supabase
+      setUploadMessage('Subiendo imagen a Supabase...');
+      const fileExt = fileToUpload.name.split('.').pop() || 'jpg';
       const fileName = `${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
       const filePath = `productos/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from('instrumentos-images')
-        .upload(filePath, file, {
+        .upload(filePath, fileToUpload, {
           cacheControl: '3600',
           upsert: true,
         });
@@ -320,62 +353,13 @@ export default function ProductosClient({ initialProducts, categories }: Product
         throw new Error(uploadError.message);
       }
 
-      // Obtener la URL pública original en Supabase
+      // Obtener la URL pública final
       const { data: { publicUrl } } = supabase.storage
         .from('instrumentos-images')
         .getPublicUrl(filePath);
 
-      let finalUrl = publicUrl;
-
-      // 2. Si la remoción de fondo está activada, procesamos con la IA en el servidor
-      if (removeBgEnabled) {
-        setUploadMessage('Removiendo fondo de la imagen... (IA en la nube, esto toma unos segundos)');
-        try {
-          const res = await removeBackgroundAction(publicUrl);
-          if (res.error || !res.transparentImageUrl) {
-            throw new Error(res.error || 'La respuesta de la IA no es válida.');
-          }
-
-          setUploadMessage('Pintando fondo blanco y optimizando...');
-          const whiteBgBlob = await addWhiteBackground(res.transparentImageUrl);
-          
-          const cleanName = file.name.replace(/\.[^/.]+$/, "") + "_white.jpg";
-          const whiteBgFile = new File([whiteBgBlob], cleanName, { type: 'image/jpeg' });
-
-          // Subir a un nuevo path con ID aleatorio para forzar al navegador a refrescar la caché
-          const processedFileName = `${Math.random().toString(36).substring(2, 15)}_white.jpg`;
-          const processedFilePath = `productos/${processedFileName}`;
-
-          setUploadMessage('Guardando versión con fondo blanco...');
-          const { error: processedUploadError } = await supabase.storage
-            .from('instrumentos-images')
-            .upload(processedFilePath, whiteBgFile, {
-              cacheControl: '3600',
-              upsert: true,
-            });
-
-          if (processedUploadError) {
-            throw new Error(processedUploadError.message);
-          }
-
-          // Obtener la nueva URL del archivo con fondo blanco para la imagen principal
-          const { data: { publicUrl: processedPublicUrl } } = supabase.storage
-            .from('instrumentos-images')
-            .getPublicUrl(processedFilePath);
-
-          finalUrl = processedPublicUrl;
-          setUploadMessage('¡Fondo blanco aplicado correctamente!');
-        } catch (bgErr: any) {
-          console.error('Error al procesar fondo blanco:', bgErr);
-          alert(`Advertencia: No se pudo remover fondo (${bgErr.message || bgErr}). Se mantendrá la imagen original.`);
-          setUploadMessage('Se guardó la imagen original (Fallo IA).');
-        }
-      }
-
-      setProductForm((prev) => ({ ...prev, imagen: finalUrl }));
-      if (!removeBgEnabled) {
-        setUploadMessage('¡Imagen cargada correctamente!');
-      }
+      setProductForm((prev) => ({ ...prev, imagen: publicUrl }));
+      setUploadMessage('¡Imagen cargada correctamente!');
     } catch (err: any) {
       console.error('Error al subir imagen:', err);
       alert('Error al subir imagen: ' + err.message);
@@ -404,16 +388,46 @@ export default function ProductosClient({ initialProducts, categories }: Product
         
         setGalleryUploadMessage(`Corrigiendo rotación de foto ${i + 1} de ${files.length}...`);
         const file = await correctExifRotation(originalFile);
-        
-        // 1. Primero subimos la imagen original de forma segura
-        const fileExt = file.name.split('.').pop();
+        let fileToUpload = file;
+
+        // Si está activo, removemos el fondo usando la IA en el navegador y pintamos blanco
+        if (removeBgEnabledGallery) {
+          setGalleryUploadMessage(`Procesando foto ${i + 1} de ${files.length} (IA local)...`);
+          try {
+            const imglyRemoveBackground = (await import('@imgly/background-removal')).default as any;
+            
+            const fileUrl = URL.createObjectURL(file);
+            const transparentBlob = await imglyRemoveBackground(fileUrl, {
+              model: 'medium',
+              progress: (key: string, current: number, total: number) => {
+                const percent = Math.round((current / total) * 100);
+                setGalleryUploadMessage(`Procesando foto ${i + 1}/${files.length}: ${percent}%`);
+              }
+            });
+            URL.revokeObjectURL(fileUrl);
+
+            setGalleryUploadMessage(`Foto ${i + 1} de ${files.length}: Pintando fondo blanco...`);
+            const transparentUrl = URL.createObjectURL(transparentBlob);
+            const whiteBgBlob = await addWhiteBackground(transparentUrl);
+            URL.revokeObjectURL(transparentUrl);
+            
+            const cleanName = file.name.replace(/\.[^/.]+$/, "") + "_white.jpg";
+            fileToUpload = new File([whiteBgBlob], cleanName, { type: 'image/jpeg' });
+          } catch (bgErr: any) {
+            console.error(`Error al procesar fondo blanco localmente en foto ${i + 1}:`, bgErr);
+            alert(`Advertencia en foto ${i + 1}: ${bgErr.message || bgErr}. Se mantendrá original.`);
+          }
+        }
+
+        // Subir a Supabase
+        setGalleryUploadMessage(`Subiendo foto ${i + 1} de ${files.length}...`);
+        const fileExt = fileToUpload.name.split('.').pop() || 'jpg';
         const fileName = `${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
         const filePath = `productos/${fileName}`;
 
-        setGalleryUploadMessage(`Subiendo foto ${i + 1} de ${files.length}...`);
         const { error: uploadError } = await supabase.storage
           .from('instrumentos-images')
-          .upload(filePath, file, {
+          .upload(filePath, fileToUpload, {
             cacheControl: '3600',
             upsert: true,
           });
@@ -426,52 +440,7 @@ export default function ProductosClient({ initialProducts, categories }: Product
           .from('instrumentos-images')
           .getPublicUrl(filePath);
 
-        let finalUrl = publicUrl;
-
-        // 2. Si está activo, removemos el fondo usando el servidor y pintamos blanco localmente
-        if (removeBgEnabledGallery) {
-          setGalleryUploadMessage(`Procesando foto ${i + 1} de ${files.length} (IA)...`);
-          try {
-            const res = await removeBackgroundAction(publicUrl);
-            if (res.error || !res.transparentImageUrl) {
-              throw new Error(res.error || 'La respuesta de la IA no es válida.');
-            }
-
-            setGalleryUploadMessage(`Foto ${i + 1} de ${files.length}: Pintando fondo blanco...`);
-            const whiteBgBlob = await addWhiteBackground(res.transparentImageUrl);
-            
-            const cleanName = file.name.replace(/\.[^/.]+$/, "") + "_white.jpg";
-            const whiteBgFile = new File([whiteBgBlob], cleanName, { type: 'image/jpeg' });
-
-            // Subir a un nuevo path con ID aleatorio para evitar problemas de caché en la galería
-            const processedFileName = `${Math.random().toString(36).substring(2, 15)}_white.jpg`;
-            const processedFilePath = `productos/${processedFileName}`;
-
-            setGalleryUploadMessage(`Guardando versión con fondo blanco para foto ${i + 1}...`);
-            const { error: processedUploadError } = await supabase.storage
-              .from('instrumentos-images')
-              .upload(processedFilePath, whiteBgFile, {
-                cacheControl: '3600',
-                upsert: true,
-              });
-
-            if (processedUploadError) {
-              throw new Error(processedUploadError.message);
-            }
-
-            // Obtener la URL del archivo de la galería con fondo blanco
-            const { data: { publicUrl: processedPublicUrl } } = supabase.storage
-              .from('instrumentos-images')
-              .getPublicUrl(processedFilePath);
-
-            finalUrl = processedPublicUrl;
-          } catch (bgErr: any) {
-            console.error(`Error al procesar fondo blanco en foto ${i + 1}:`, bgErr);
-            alert(`Advertencia en foto ${i + 1}: ${bgErr.message || bgErr}. Se mantendrá original.`);
-          }
-        }
-
-        uploadedUrls.push(finalUrl);
+        uploadedUrls.push(publicUrl);
       }
 
       setProductForm((prev) => ({
@@ -487,6 +456,7 @@ export default function ProductosClient({ initialProducts, categories }: Product
       setUploadingGallery(false);
     }
   };
+
 
   const handleRemoveGalleryImage = (idxToRemove: number) => {
     setProductForm((prev) => ({
